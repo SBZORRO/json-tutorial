@@ -262,38 +262,70 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
       ret = LEPT_PARSE_INVALID_VALUE;
       break;
     }
-    if (*c->json == '\"' && (ret = lept_parse_string_raw(c, &m.k, &m.klen)) != LEPT_PARSE_OK) {
+    if (*c->json != '\"' || (ret = lept_parse_string(c,&m.v)) != LEPT_PARSE_OK) {
+      ret = LEPT_PARSE_MISS_KEY;
       break;
     }
+
+    m.k = (char*)malloc(m.v.u.s.len + 1);
+    memcpy(m.k, m.v.u.s.s, m.v.u.s.len);
+    m.k[m.v.u.s.len] = '\0';
+    m.klen = m.v.u.s.len;
+
+    lept_free(&m.v);
+    lept_init(&m.v);
+
     lept_parse_whitespace(c);
     if (*c->json == ':') {
       c->json++;
     } else {
-      ret = LEPT_PARSE_INVALID_VALUE;
+      ret = LEPT_PARSE_MISS_COLON;
+      free(m.k);
+      break;
     }
     lept_parse_whitespace(c);
     if ((ret = lept_parse_value(c, &m.v)) != LEPT_PARSE_OK)
       break;
+
+
     void* temp = lept_context_push(c, sizeof(lept_member));
     memcpy(temp, &m, sizeof(lept_member));
     size++;
+    /* lept_free(&m.v); */
     m.k = NULL; /* ownership is transferred to member on stack */
     /* \todo parse ws [comma | right-curly-brace] ws */
     lept_parse_whitespace(c);
     if (*c->json == ','){
       c->json++;
+      lept_parse_whitespace(c);
+      if (*c->json =='\0') {
+        ret = LEPT_PARSE_MISS_KEY;
+        break;
+      }
       continue;
     }
     else if (*c->json == '}') {
       c->json++;
       v->type = LEPT_OBJECT;
       break;
+    } else {
+      ret = LEPT_PARSE_MISS_COMMA_OR_CURLY_BRACKET;
+      break;
     }
   }
   /* \todo Pop and free members on the stack */
-  v->u.o.size = size;
-  size *= sizeof(lept_member);
-  memcpy(v->u.o.m = (lept_member*)malloc(size), lept_context_pop(c, size), size);
+  if (ret == LEPT_PARSE_OK) {
+    v->u.o.size = size;
+    size *= sizeof(lept_member);
+    memcpy(v->u.o.m = (lept_member*)malloc(size), lept_context_pop(c, size), size);
+  } else{
+    /* free(lept_context_pop(c, size * sizeof(lept_member))); */
+    for (size ; size>0; size--) {
+      m = *(lept_member*)lept_context_pop(c, sizeof(lept_member));
+      free(m.k);
+      lept_free(&m.v);
+    }
+  }
 
   return ret;
 }
@@ -342,6 +374,13 @@ void lept_free(lept_value* v) {
     for (i = 0; i < v->u.a.size; i++)
       lept_free(&v->u.a.e[i]);
     free(v->u.a.e);
+    break;
+  case LEPT_OBJECT:
+    for (i = 0; i < v->u.o.size; i++) {
+      free(v->u.o.m[i].k);
+      lept_free(&v->u.o.m[i].v);
+    }
+    free(v->u.o.m);
     break;
   default: break;
   }
