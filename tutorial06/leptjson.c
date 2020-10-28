@@ -280,7 +280,6 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
       c->json++;
     } else {
       ret = LEPT_PARSE_MISS_COLON;
-      free(m.k);
       break;
     }
     lept_parse_whitespace(c);
@@ -291,7 +290,6 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
     void* temp = lept_context_push(c, sizeof(lept_member));
     memcpy(temp, &m, sizeof(lept_member));
     size++;
-    /* lept_free(&m.v); */
     m.k = NULL; /* ownership is transferred to member on stack */
     /* \todo parse ws [comma | right-curly-brace] ws */
     lept_parse_whitespace(c);
@@ -320,6 +318,7 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
     memcpy(v->u.o.m = (lept_member*)malloc(size), lept_context_pop(c, size), size);
   } else{
     /* free(lept_context_pop(c, size * sizeof(lept_member))); */
+    free(m.k);
     for (size ; size>0; size--) {
       m = *(lept_member*)lept_context_pop(c, sizeof(lept_member));
       free(m.k);
